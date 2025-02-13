@@ -24,7 +24,7 @@ defaults.spell_active = false
 defaults.weaponskill = ""
 defaults.weaponskill_active = false
 defaults.autotarget = false
-defaults.target = ""
+defaults.target = {}
 
 settings = config.load(defaults)
 
@@ -84,7 +84,24 @@ windower.register_event('addon command', function (...)
 			windower.add_to_chat(3,"Autotarget: False")
 		end
 	elseif args[1] == "target" then
-		settings.target = args[2]
+		if args[2] then  
+        		table.insert(settings.target, args[2]) -- Add target to the list if it's not already there
+        		windower.add_to_chat(3, "Target added: " .. args[2])
+    		end
+	elseif args[1] == "ws" then --Added section to change weaponskills and turn on/off
+		if args[2] == nil then
+			windower.add_to_chat(11,"Weaponskill: "..settings.weaponskill)
+			windower.add_to_chat(11,"Use Weaponskill: "..tostring(settings.weaponskill_active))
+		elseif args[2] == "on" then
+			settings.weaponskill_active = true
+		elseif args[2] == "off" then
+			settings.weaponskill_active = false
+		else
+			settings.weaponskill = args[2]
+			settings.weaponskill_active = true
+			windower.add_to_chat(11,"Weaponskill: "..settings.weaponskill)
+			windower.add_to_chat(11,"Use Weaponskill: "..tostring(settings.weaponskill_active))
+		end
 	end
 end)
 
@@ -104,18 +121,25 @@ function TurnToTarget()
 	end
 end
 
-function Find_Nearest_Target(target)
+function Find_Nearest_Target(targets)
 	local id_targ = -1
 	local dist_targ = -1
 	local marray = windower.ffxi.get_mob_array()
-	for key,mob in pairs(marray) do
-		if string.lower(mob["name"]) == string.lower(target) and mob["valid_target"] and mob["hpp"] == 100 then
-			if dist_targ == -1 then
-				id_targ = key
-				dist_targ = math.sqrt(mob["distance"])
-			elseif math.sqrt(mob["distance"]) < dist_targ then
-				id_targ = key
-				dist_targ = math.sqrt(mob["distance"])
+
+	-- Loop through all targets in the table
+	for _, target in ipairs(targets) do
+		for key,mob in pairs(marray) do
+			if mob["valid_target"] and mob["hpp"] == 100 then
+				local mob_name = string.lower(mob["name"])
+               	 		local target_name = string.lower(target)
+		-- Check if the mob name contains the target string (partial match)
+				if string.find(mob_name, target_name, 1, true) then
+					local distance = math.sqrt(mob["distance"])
+					 if dist_targ == -1 or distance < dist_targ then
+						id_targ = key
+						dist_targ = math.sqrt(mob["distance"])
+					end
+				end
 			end
 		end
 	end
@@ -155,15 +179,17 @@ function Combat()
 		TurnToTarget()
 		Check_Distance()
 		if windower.ffxi.get_player().vitals.tp >1000 and settings.weaponskill_active == true and windower.ffxi.get_mob_by_target('t').distance:sqrt() < 3.0 then
-			windower.send_command(settings.weaponskill)
+			windower.send_command(('input /ws "%s" <t>'):format(settings.weaponskill))
 			isBusy = Action_Delay
 		elseif Can_Cast_Spell(settings.spell) and settings.spell_active == true then
 			Cast_Spell(settings.spell)
 		end
 	elseif settings.autotarget == true then
-		if Find_Nearest_Target(settings.target) > 0 then
-			windower.ffxi.follow(Find_Nearest_Target(settings.target))
-			if math.sqrt(windower.ffxi.get_mob_by_index(Find_Nearest_Target(settings.target)).distance) < 3 then
+		-- Check for nearest target from the list
+		local target_id = Find_Nearest_Target(settings.target)
+		if target_id > 0 then
+			windower.ffxi.follow(target_id)
+			if math.sqrt(windower.ffxi.get_mob_by_index(target_id).distance) < 3 then
 				windower.send_command("input /targetbnpc")
 				windower.send_command("input /attack on")
 			end
@@ -196,7 +222,7 @@ function Cast_Spell(spell)
 	Recasts = windower.ffxi.get_spell_recasts()
 	local myspell = res.spells:with('name',spell)
 	if Recasts[myspell.id] == 0 and not isCasting then
-		windower.send_command(myspell.name)
+		windower.send_command(('input /ma "%s" <t>'):format(myspell.name))
 		isBusy = Action_Delay
 	end
 end
